@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.12)
+
+IF( NOT CMAKE_BUILD_TYPE )
+	SET( CMAKE_BUILD_TYPE "RelWithDebInfo" )
+ENDIF()
+
+project(shades VERSION 0.1 LANGUAGES C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+find_package(OpenGL REQUIRED)
+
+add_subdirectory(lib/glfw)
+add_subdirectory(src)
