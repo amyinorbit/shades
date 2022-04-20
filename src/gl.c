@@ -164,11 +164,11 @@ GLuint gl_load_tex(const char *path, int *w, int *h) {
     int components = 0;
     uint8_t *data = stbi_load(path, w, h, &components, 4);
     if(!data) {
-        fprintf(stderr, "unable to load image `%s`", path);
+        fprintf(stderr, "unable to load image `%s`\n", path);
         return 0;
     }
     if(components != 4) {
-        fprintf(stderr, "image `%s` does not have the right format", path);
+        fprintf(stderr, "image `%s` does not have the right format\n", path);
         free(data);
         return 0;
     }
@@ -178,7 +178,7 @@ GLuint gl_load_tex(const char *path, int *w, int *h) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, *w, *h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     free(data);
 
-    fprintf(stderr, "loaded texture `%s` (%dx%d px)", path, *w, *h);
+    fprintf(stderr, "loaded texture `%s` (%dx%d)\n", path, *w, *h);
     return tex;
 }
 
@@ -218,5 +218,5 @@ void gl_ortho(float proj[16], float x, float y, float width, float height) {
 void check_gl(const char *where, int line) {
     GLenum error = glGetError();
     if(error == GL_NO_ERROR) return;
-    fprintf(stderr, "%s() OpenGL error code 0x%04x line %d", where, error, line);
+    fprintf(stderr, "%s() OpenGL error code 0x%04x line %d\n", where, error, line);
 }
