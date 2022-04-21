@@ -166,11 +166,14 @@ static void setup(shades_data_t *data) {
     
     glBindBuffer(GL_ARRAY_BUFFER, data->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(data->vert), data->vert, GL_STATIC_DRAW);
-    
+}
+
+static void fetch_shader_info(shades_data_t *data) {
     glUseProgram(data->shader.prog);
+    glBindVertexArray(data->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, data->vbo);
     
     data->shader.attr.vtx_pos = glGetAttribLocation(data->shader.prog, "in_vtx_pos");
-    
     data->shader.uniform.pvm = glGetUniformLocation(data->shader.prog, "u_pvm");
     data->shader.uniform.tex0 = glGetUniformLocation(data->shader.prog, "u_tex0");
     data->shader.uniform.tex1 = glGetUniformLocation(data->shader.prog, "u_tex1");
@@ -181,7 +184,6 @@ static void setup(shades_data_t *data) {
     data->shader.uniform.time = glGetUniformLocation(data->shader.prog, "u_time");
     data->shader.uniform.scale = glGetUniformLocation(data->shader.prog, "u_scale");
     
-    glBindBuffer(GL_ARRAY_BUFFER, data->vbo);
     glEnableVertexAttribArray(data->shader.attr.vtx_pos);
     glVertexAttribPointer(data->shader.attr.vtx_pos, 2, GL_FLOAT, GL_FALSE, sizeof(vect2_t), (void*)0);
 }
@@ -246,7 +248,7 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     switch(key) {
     case GLFW_KEY_R:
         data->shader.prog = reload_shader(data->shader.prog, data->shader.path);
-        
+        fetch_shader_info(data);
         for(int i = 0; i < MAX_TEXTURES; ++i) {
             const char *path = data->textures[i].path;
             if(!path) continue;
@@ -310,17 +312,22 @@ int main(int argc, const char **args) {
         .size = VECT2(w, h),
         .scale = (float)w/(float)HEIGHT,
     };
+    
+    
+    for(int i = 0; i < argc - 2 && i < MAX_TEXTURES; ++i) {
+        const char *path = args[2+i];
+        data.textures[i].path = path;
+        glActiveTexture(GL_TEXTURE0+i);
+        data.textures[i].tex = reload_texture(0, path, &data.textures[i].size);
+    }
+    
     setup(&data);
+    fetch_shader_info(&data);
     glfwSetWindowUserPointer(window, &data);
     // glfwSetWindowSizeCallback(window, resize_callback);
     glfwSetKeyCallback(window, key_callback);
     glfwSetFramebufferSizeCallback(window, framebuffer_callback);
     
-    for(int i = 0; i < argc - 2 && i < MAX_TEXTURES; ++i) {
-        const char *path = args[2+i];
-        data.textures[i].path = path;
-        data.textures[i].tex = reload_texture(0, path, &data.textures[i].size);
-    }
     
     // Main Loop
     while(!glfwWindowShouldClose(window)) {
