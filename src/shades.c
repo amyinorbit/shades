@@ -24,7 +24,6 @@ typedef struct {
     
     struct {
         GLuint      vtx_pos;
-        GLuint      vtx_tex0;
     } attr;
     
     struct {
@@ -32,13 +31,17 @@ typedef struct {
         GLuint      tex0;
         GLuint      tex1;
         GLuint      tex2;
+        GLuint      tex3;
+        GLuint      tex_res;
         GLuint      res;
         GLuint      time;
+        GLuint      scale;
     } uniform;
 } shader_info_t;
 
 typedef struct {
     GLuint          tex;
+    vect2_t         size;
     const char      *path;
 } texture_info_t;
 
@@ -51,13 +54,14 @@ typedef struct {
     shader_info_t   shader;
     texture_info_t  textures[MAX_TEXTURES];
     
+    float           scale;
     vect2_t         size;
     
     GLuint          vao;
     GLuint          vbo;
     GLuint          ebo;
     
-    vertex_t        vert[4];
+    vect2_t         vert[4];
     GLuint          indices[6];
     
     
@@ -68,11 +72,8 @@ static const char *vert_shader =
     "#version 400\n"
     "uniform mat4   u_pvm;\n"
     "in vec2        in_vtx_pos;\n"
-    "in vec2        in_vtx_tex0;\n"
-    "out vec2       tex_coord;\n"
     "void main() {\n"
-    "    tex_coord = in_vtx_tex0;\n"
-    "    gl_Position = u_pvm * vec4(in_vtx_pos, 0.0, 1.0);\n"
+    "    gl_Position = vec4(in_vtx_pos, 0.0, 1.0);\n"
     "}\n";
 
 static const char *frag_defines =
@@ -80,16 +81,19 @@ static const char *frag_defines =
     "uniform sampler2D  u_tex0;\n"
     "uniform sampler2D  u_tex1;\n"
     "uniform sampler2D  u_tex2;\n"
+    "uniform sampler2D  u_tex3;\n"
+    "uniform vec2       u_tex_res[4];\n"
     "uniform vec2       u_res;\n"
     "uniform float      u_time;\n"
+    "uniform float      u_scale;\n"
     "\n"
-    "in vec2            tex_coord;\n"
     "out vec4           out_color;\n"  
     "\n";
 
 static const char *frag_shader =
     "void main() {\n"
-    "    out_color = main_image(tex_coord);\n"
+    "    vec2 coord = vec2(gl_FragCoord.x, u_res.y-gl_FragCoord.y);\n"
+    "    out_color = main_image(coord / u_scale);\n"
     "}\n";
 
 
@@ -130,7 +134,7 @@ static GLuint reload_shader(GLuint prog, const char *path) {
     return prog;
 }
 
-static GLuint reload_texture(GLuint tex, const char *path) {
+static GLuint reload_texture(GLuint tex, const char *path, vect2_t *size) {
     if(tex) {
         glDeleteTextures(1, &tex);
         tex = 0;
@@ -138,21 +142,15 @@ static GLuint reload_texture(GLuint tex, const char *path) {
     
     int w, h;
     tex = gl_load_tex(path, &w, &h);
+    if(size) *size = VECT2(w, h);
     return tex;
 }
 
 static void setup(shades_data_t *data) {
-    data->vert[0].pos = VECT2(0, 0);
-    data->vert[0].tex0 = VECT2(0, 0);
-    
-    data->vert[1].pos = VECT2(data->size.x, 0);
-    data->vert[1].tex0 = VECT2(1, 0);
-    
-    data->vert[2].pos = VECT2(data->size.x, data->size.y);
-    data->vert[2].tex0 = VECT2(1, 1);
-    
-    data->vert[3].pos = VECT2(0, data->size.y);
-    data->vert[3].tex0 = VECT2(0, 1);
+    data->vert[0] = VECT2(-1, -1);
+    data->vert[1] = VECT2(1, -1);
+    data->vert[2] = VECT2(1, 1);
+    data->vert[3] = VECT2(-1, 1);
     
     gl_ortho(data->proj, 0, 0, data->size.x, data->size.y);
     
@@ -172,21 +170,20 @@ static void setup(shades_data_t *data) {
     glUseProgram(data->shader.prog);
     
     data->shader.attr.vtx_pos = glGetAttribLocation(data->shader.prog, "in_vtx_pos");
-    data->shader.attr.vtx_tex0 = glGetAttribLocation(data->shader.prog, "in_vtx_tex0");
     
     data->shader.uniform.pvm = glGetUniformLocation(data->shader.prog, "u_pvm");
     data->shader.uniform.tex0 = glGetUniformLocation(data->shader.prog, "u_tex0");
     data->shader.uniform.tex1 = glGetUniformLocation(data->shader.prog, "u_tex1");
     data->shader.uniform.tex2 = glGetUniformLocation(data->shader.prog, "u_tex2");
+    data->shader.uniform.tex3 = glGetUniformLocation(data->shader.prog, "u_tex3");
+    data->shader.uniform.tex_res = glGetUniformLocation(data->shader.prog, "u_tex_res");
     data->shader.uniform.res = glGetUniformLocation(data->shader.prog, "u_res");
     data->shader.uniform.time = glGetUniformLocation(data->shader.prog, "u_time");
+    data->shader.uniform.scale = glGetUniformLocation(data->shader.prog, "u_scale");
     
     glBindBuffer(GL_ARRAY_BUFFER, data->vbo);
     glEnableVertexAttribArray(data->shader.attr.vtx_pos);
-    glEnableVertexAttribArray(data->shader.attr.vtx_tex0);
-    
-    glVertexAttribPointer(data->shader.attr.vtx_pos, 2, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void *)offsetof(vertex_t, pos));
-    glVertexAttribPointer(data->shader.attr.vtx_tex0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void *)offsetof(vertex_t, tex0));
+    glVertexAttribPointer(data->shader.attr.vtx_pos, 2, GL_FLOAT, GL_FALSE, sizeof(vect2_t), (void*)0);
 }
 
 static void run_loop(const shades_data_t *data) {
@@ -197,14 +194,23 @@ static void run_loop(const shades_data_t *data) {
     glUniform1i(data->shader.uniform.tex0, 0);
     glUniform1i(data->shader.uniform.tex1, 1);
     glUniform1i(data->shader.uniform.tex2, 2);
+    glUniform1i(data->shader.uniform.tex3, 3);
     
     glUniform2fv(data->shader.uniform.res, 1, (const float *)&data->size);
     glUniform1f(data->shader.uniform.time, (float)glfwGetTime());
+    glUniform1f(data->shader.uniform.scale, data->scale);
+    
+    // printf("size: %.0fx%.0f (%.0fX)\n", data->size.x, data->size.y, data->scale);
+    
+    vect2_t tex_res[MAX_TEXTURES];
     
     for(int i = 0; i < MAX_TEXTURES; ++i) {
         glActiveTexture(GL_TEXTURE0+i);
         glBindTexture(GL_TEXTURE_2D, data->textures[i].tex);
+        tex_res[i] = data->textures[i].size;
     }
+    
+    glUniform2fv(data->shader.uniform.tex_res, MAX_TEXTURES, (const float *)tex_res);
     
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     
@@ -219,6 +225,17 @@ static void usage(const char *prog, FILE *out) {
     fprintf(out, "usage: %s shader [images...]\n", prog);
 }
 
+// static void resize_callback(GLFWwindow* window, int width, int height) {
+//     shades_data_t *data = glfwGetWindowUserPointer(window);
+//     data->size = VECT2(width, height);
+// }
+
+static void framebuffer_callback(GLFWwindow *window, int width, int height) {
+    shades_data_t *data = glfwGetWindowUserPointer(window);
+    data->size = VECT2(width, height);
+    glViewport(0, 0, width, height);
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if(action != GLFW_PRESS) return;
     if(!(mods & (GLFW_MOD_SUPER|GLFW_MOD_CONTROL))) return;
@@ -227,16 +244,25 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     
     shades_data_t *data = glfwGetWindowUserPointer(window);
     switch(key) {
-        case GLFW_KEY_R:
+    case GLFW_KEY_R:
         data->shader.prog = reload_shader(data->shader.prog, data->shader.path);
         
         for(int i = 0; i < MAX_TEXTURES; ++i) {
             const char *path = data->textures[i].path;
             if(!path) continue;
-            data->textures[i].tex = reload_texture(data->textures[i].tex, path);
+            data->textures[i].tex = reload_texture(data->textures[i].tex, path, &data->textures[i].size);
         }
         break;
-        default: break;
+        
+    case GLFW_KEY_EQUAL:
+        data->scale += 1.f;
+        break;
+        
+    case GLFW_KEY_MINUS:
+        data->scale -= 1.f;
+        if(data->scale < 1.f) data->scale = 1.f;
+        break;
+    default: break;
     }
 }
 
@@ -266,27 +292,36 @@ int main(int argc, const char **args) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     
     GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, NAME, NULL, NULL);
     if(!window) die("could not create application window");
     glfwMakeContextCurrent(window);
+    glfwSetWindowSizeLimits(window, 200, 200, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
     gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
     CHECK_GL();
+    
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    
+    
 
     shades_data_t data = {
         .shader = {.prog = reload_shader(0, shader_path), .path = shader_path},
-        .size = VECT2(WIDTH, HEIGHT),
+        .size = VECT2(w, h),
+        .scale = (float)w/(float)HEIGHT,
     };
     setup(&data);
     glfwSetWindowUserPointer(window, &data);
+    // glfwSetWindowSizeCallback(window, resize_callback);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetFramebufferSizeCallback(window, framebuffer_callback);
     
     for(int i = 0; i < argc - 2 && i < MAX_TEXTURES; ++i) {
         const char *path = args[2+i];
         data.textures[i].path = path;
-        data.textures[i].tex = reload_texture(0, path);
+        data.textures[i].tex = reload_texture(0, path, &data.textures[i].size);
     }
     
     // Main Loop
