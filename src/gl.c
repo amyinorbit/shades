@@ -162,12 +162,12 @@ GLuint gl_create_tex(unsigned width, unsigned height) {
 GLuint gl_load_tex(const char *path, int *w, int *h) {
     // stbi_set_flip_vertically_on_load(true);
     int components = 0;
-    uint8_t *data = stbi_load(path, w, h, &components, 4);
+    uint8_t *data = stbi_load(path, w, h, &components, 0);
     if(!data) {
         fprintf(stderr, "unable to load image `%s`\n", path);
         return 0;
     }
-    if(components != 4) {
+    if(components != 4 && components != 3) {
         fprintf(stderr, "image `%s` does not have the right format\n", path);
         free(data);
         return 0;
@@ -175,7 +175,12 @@ GLuint gl_load_tex(const char *path, int *w, int *h) {
 
     GLuint tex = gl_create_tex(*w, *h);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, *w, *h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    if(components == 4) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, *w, *h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, *w, *h, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    }
+    
     free(data);
 
     fprintf(stderr, "loaded texture `%s` (%dx%d)\n", path, *w, *h);

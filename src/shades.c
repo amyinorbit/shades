@@ -305,8 +305,6 @@ int main(int argc, const char **args) {
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
     
-    
-
     shades_data_t data = {
         .shader = {.prog = reload_shader(0, shader_path), .path = shader_path},
         .size = VECT2(w, h),
