@@ -7,8 +7,11 @@
 // =^•.•^=
 //===--------------------------------------------------------------------------------------------===
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <stdint.h>
+#include <getopt.h>
+#include <string.h>
 #include "gl.h"
 
 #define WIDTH   1024
@@ -223,8 +226,35 @@ static void run_loop(const shades_data_t *data) {
     glUseProgram(0);
 }
 
-static void usage(const char *prog, FILE *out) {
-    fprintf(out, "usage: %s shader [images...]\n", prog);
+static void usage(const char *prog, FILE *out, bool detailed) {
+    fprintf(out, "Usage: %s [-h] [-s <size>] <shader.glsl> [<texture.png>...]\n", prog);
+    if(!detailed) return;
+    
+#ifdef __APPLE__
+#define CMD_CHAR "⌘"
+#else
+#define CMD_CHAR "^"
+#endif
+    
+    fprintf(out,
+    "\n"
+    "Shortcuts\n"
+    "  %sR      reload currently loaded shaders and textures.\n"
+    "  %s+      increase the zoom level by 1.\n"
+    "  %s-      decrease the zoom level by 1.\n"
+    "\n"
+    "Examples\n"
+    "  Run the `crt.glsl' fragment shader, with `image.png'\n"
+    "  in u_tex0 and `mask.png' in u_tex1. Start with a\n"
+    "  1024x800-point window.\n"
+    "\n"
+    "  $ %s crt.glsl -s 1024x800 image.png mask.png\n"
+    "\n"
+    "Options\n"
+    " -s <size> specify a starting window size in points.\n"
+    " -h        shows this help screen and exists.\n",
+    CMD_CHAR,CMD_CHAR,CMD_CHAR,prog);
+    
 }
 
 // static void resize_callback(GLFWwindow* window, int width, int height) {
@@ -268,23 +298,89 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     }
 }
 
-int main(int argc, const char **args) {
+static void exit_usage(const char *prog, const char *message) {
+    fprintf(stderr, "error: %s\n", message);
+    usage(prog, stderr, false);
+    exit(EXIT_FAILURE);
+}
+
+static bool parse_size(char *arg, double *width, double *height) {
+    char *sep = strchr(arg, 'x');
+    
+    if(!sep) return false;
+    assert(width && height);
+    
+    *sep = '\0';
+    const char *w = arg;
+    const char *h = sep+1;
+    *width = atof(w);
+    *height = atof(h);
+    return true;
+}
+
+int main(int argc, char *args[]) {
     (void)argc;
     (void)args;
     
-    if(argc < 2) {
-        fprintf(stderr, "error: invalid arguments\n");
-        usage(args[0], stderr);
-        return -1;
+    if(argc < 2) exit_usage(args[0], "wrong number of arguments");
+    
+    
+    double width = NAN;
+    double height = NAN;
+    const char *shader_path = NULL;
+    const char *tex_path[MAX_TEXTURES] = {NULL};
+    
+    int num_tex = 0;
+    
+    opterr = 0;
+    int c = '\0';
+    
+    while((c = getopt(argc, args, "s:h")) != -1) {
+        switch(c) {
+            case 's':
+                if(!parse_size(optarg, &width, &height)) {
+                    exit_usage(args[0], "invalid window size format");
+                }
+                break;
+                
+            case 'h':
+                usage(args[0], stdout, true);
+                exit(EXIT_SUCCESS);
+                break;
+        
+            case '?':
+                exit_usage(args[0], "unknown argument");
+                break;
+            default:
+                break;
+        }
     }
     
-    if(argc > 2 + MAX_TEXTURES) {
-        fprintf(stderr, "error: too many texture channels\n");
-        usage(args[0], stderr);
-        return -1;
+    if(isnan(width) && isnan(height)) {
+        width = WIDTH;
+        height = HEIGHT;
+    } else if(isnan(width)) {
+        exit_usage(args[0], "height specified without width");
+    } else if(isnan(height)) {
+        exit_usage(args[0], "width specified without height");
     }
     
-    const char *shader_path = args[1];
+    int count = argc - optind;
+    num_tex = count - 1;
+    
+    if(count < 1) {
+        exit_usage(args[0], "missing shader path");
+    }
+    
+    if(count > 1 + MAX_TEXTURES) {
+        exit_usage(args[0], "too many texture channels");
+    }
+    
+    shader_path = args[optind];
+    
+    for(int i = 0; i < num_tex; ++i) {
+        tex_path[i] = args[optind+1+i];
+    }
     
     // Create our window
     if(!glfwInit()) die("could not initialise window system");
@@ -296,7 +392,7 @@ int main(int argc, const char **args) {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     
-    GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, NAME, NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(width, height, NAME, NULL, NULL);
     if(!window) die("could not create application window");
     glfwMakeContextCurrent(window);
     glfwSetWindowSizeLimits(window, 200, 200, GLFW_DONT_CARE, GLFW_DONT_CARE);
@@ -310,12 +406,12 @@ int main(int argc, const char **args) {
     shades_data_t data = {
         .shader = {.prog = reload_shader(0, shader_path), .path = shader_path},
         .size = VECT2(w, h),
-        .scale = (float)w/(float)HEIGHT,
+        .scale = (float)w/(float)height,
     };
     
     
-    for(int i = 0; i < argc - 2 && i < MAX_TEXTURES; ++i) {
-        const char *path = args[2+i];
+    for(int i = 0; i < num_tex && i < MAX_TEXTURES; ++i) {
+        const char *path = tex_path[i];
         data.textures[i].path = path;
         glActiveTexture(GL_TEXTURE0+i);
         data.textures[i].tex = reload_texture(0, path, &data.textures[i].size);
